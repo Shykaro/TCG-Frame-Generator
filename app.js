@@ -37,9 +37,9 @@ function render(){
   $('workspace').classList.toggle('free',state.free);$('empty').hidden=!!state.cards.length;
   $('dimensions').textContent=`${rounded(state.fw/10)} × ${rounded(state.fh/10)} cm`;
   $('summary').textContent=`${state.cards.length} card${state.cards.length===1?'':'s'}`;
-  $('mode').textContent=state.free?'Free placement':'Live grid';$('undo').disabled=!history.length;$('selectAll').disabled=!state.cards.length;
+  $('mode').textContent=state.free?'Free placement':'Live grid';$('undo').disabled=!history.length;$('selectAll').disabled=$('clear').disabled=!state.cards.length;
   const cards=chosen();if(inspectorMode!==!!cards.length){$('inspectorPanel').scrollTop=0;inspectorMode=!!cards.length} $('general').hidden=!!cards.length;$('selection').hidden=!cards.length;
-  $('instruction').textContent=state.free?'Drag to move · Ctrl / Cmd + click to select more · Esc to deselect':'Click to edit · Ctrl / Cmd + click to select more · Esc to deselect';
+  $('instruction').textContent=state.free?'Drag to move · Ctrl / Cmd + click to select more · Del to delete · Esc to deselect':'Click to edit · Ctrl / Cmd + click to select more · Del to delete · Esc to deselect';
   if(cards.length){
     $('selectionTitle').textContent=cards.length===1?'Edit card':`Edit ${cards.length} cards`;
     $('nameLabel').hidden=cards.length!==1;value('name',cards[0].name);
@@ -65,7 +65,9 @@ $('selectionPreset').onchange=()=>{if(!$('selectionPreset').value)return;const [
 function deselect(){selected.clear();render()}
 $('back').onclick=deselect;$('selectAll').onclick=()=>{selected=new Set(state.cards.map(c=>c.id));render()};
 $('selectedList').onclick=e=>{const b=e.target.closest('[data-edit]');if(b){selected=new Set([b.dataset.edit]);render()}};
-$('delete').onclick=()=>act(()=>{state.cards=state.cards.filter(c=>!selected.has(c.id));selected.clear()});
+function deleteSelected(){if(!selected.size)return;drag=null;act(()=>{state.cards=state.cards.filter(c=>!selected.has(c.id));selected.clear()})}
+$('delete').onclick=deleteSelected;
+$('clear').onclick=()=>{if(!state.cards.length)return;drag=null;act(()=>{state.cards=[];selected.clear()})};
 $('duplicate').onclick=()=>act(()=>{const copies=chosen().map(c=>({...c,id:crypto.randomUUID(),name:c.name+' copy',x:c.x+5,y:c.y+5}));state.cards.push(...copies);selected=new Set(copies.map(c=>c.id))});
 $('rotate').onclick=()=>act(()=>chosen().forEach(c=>{c.x+=(c.w-c.h)/2;c.y+=(c.h-c.w)/2;[c.w,c.h]=[c.h,c.w]}));
 $('center').onclick=()=>act(center,false);
@@ -86,7 +88,11 @@ function endDrag(){if(!drag)return;drag=null;if(state.autoFit)fit();render()}
 $('canvas').onpointerup=$('canvas').onpointercancel=endDrag;
 $('workspace').onpointerdown=e=>{if(!e.target.closest('[data-id]'))deselect()};
 $('canvas').onkeydown=e=>{const g=e.target.closest('[data-id]');if(!g)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();selectCard(g.dataset.id,e.ctrlKey||e.metaKey);$('canvas').querySelector(`[data-id="${g.dataset.id}"]`)?.focus();return}const d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(d&&state.free){e.preventDefault();if(!selected.has(g.dataset.id))selected=new Set([g.dataset.id]);act(()=>chosen().forEach(c=>{c.x+=d[0]*(e.shiftKey?10:1);c.y+=d[1]*(e.shiftKey?10:1)}));$('canvas').querySelector(`[data-id="${g.dataset.id}"]`)?.focus()}};
- document.addEventListener('keydown',e=>{if(e.key==='Escape'){endDrag();deselect()}});
+ document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){endDrag();deselect();return}
+  const editing=e.target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])');
+  if(e.key==='Delete'&&!editing&&!e.isComposing&&selected.size){e.preventDefault();deleteSelected()}
+});
 function download(name,data,type){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 $('save').onclick=()=>download('card-atelier-project.json',JSON.stringify(state,null,2),'application/json');$('export').onclick=()=>download('card-template.svg',svg(),'image/svg+xml');$('open').onclick=()=>$('load').click();
 function validate(s){
@@ -96,8 +102,8 @@ function validate(s){
   for(const k of ['margin','gap'])if(!Number.isFinite(s[k])||s[k]<0)throw Error('Invalid spacing.');
   if(!['slim','classic','box','wood','gallery'].includes(s.frame))throw Error('Invalid frame.');
   for(const k of ['color','bg'])if(!/^#[0-9a-f]{6}$/i.test(s[k]))throw Error('Invalid color.');
-  // Preserve legacy hand-positioned projects when upgrading.
-  for(const [k,fallback] of [['free',true],['autoFit',false],['snap',true]]){if(s[k]===undefined)s[k]=fallback;if(typeof s[k]!=='boolean')throw Error('Invalid layout options.')}
+  // Legacy files default to locked placement; retain their coordinates on load.
+  for(const [k,fallback] of [['free',false],['autoFit',false],['snap',true]]){if(s[k]===undefined)s[k]=fallback;if(typeof s[k]!=='boolean')throw Error('Invalid layout options.')}
   s.cards=s.cards.map(c=>{if(![c.x,c.y,c.w,c.h].every(Number.isFinite)||c.w<=0||c.h<=0||typeof c.name!=='string')throw Error('Invalid card.');return {id:crypto.randomUUID(),name:c.name,x:c.x,y:c.y,w:c.w,h:c.h}});return s;
 }
 $('load').onchange=async e=>{try{if(!e.target.files.length)return;const s=validate(JSON.parse(await e.target.files[0].text()));act(()=>{state=s;selected.clear()},false)}catch(err){alert(err.message)}finally{e.target.value=''}};

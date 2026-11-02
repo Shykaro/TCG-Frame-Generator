@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
-const elements={};const context={crypto:require('node:crypto').webcrypto,console,alert(m){throw Error(m)},localStorage:{getItem(){return null},setItem(){}},document:{activeElement:null,addEventListener(){},getElementById(id){return elements[id]??={value:'',checked:false,style:{},classList:{toggle(){}},setAttribute(){},addEventListener(){},setCustomValidity(){},querySelector(){return null}}}}};vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../app.js'),'utf8'),context);
+const elements={},listeners={};const context={crypto:require('node:crypto').webcrypto,console,alert(m){throw Error(m)},localStorage:{getItem(){return null},setItem(){}},document:{activeElement:null,addEventListener(name,fn){listeners[name]=fn},getElementById(id){return elements[id]??={value:'',checked:false,style:{},classList:{toggle(){}},setAttribute(){},addEventListener(){},setCustomValidity(){},querySelector(){return null}}}}};vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../app.js'),'utf8'),context);
 function run(code){return vm.runInContext(code,context)}
 run(`state.cards=Array.from({length:6},(_,i)=>({id:String(i),name:'Card '+i,w:63,h:88,x:0,y:0}));layout()`);
 assert.equal(run('state.fw'),249);assert.equal(run('state.fh'),226);
@@ -15,3 +15,19 @@ assert.equal(run(`(()=>{const old=JSON.parse(JSON.stringify(state));delete old.a
 assert.throws(()=>run('validate({...state,cols:1.5})'),/Invalid columns/);
 run(`selected=new Set(state.cards.map(c=>c.id));$('delete').onclick()`);assert.equal(run('state.cards.length'),0);assert.ok(Number.isFinite(run('state.fw')));
 console.log('PASS: live layout, automatic and fixed frame sizing, batch resize, selection, undo, legacy import, SVG dimensions, empty layout');
+
+assert.equal(run('validate({...state,free:undefined}).free'),false);
+run("state.cards=[{id:'a',name:'A',x:0,y:0,w:63,h:88},{id:'b',name:'B',x:80,y:0,w:63,h:88},{id:'c',name:'C',x:160,y:0,w:63,h:88}];selected=new Set(['a','b'])");
+let prevented=false;
+listeners.keydown({key:'Delete',target:{closest(){return {}}},preventDefault(){prevented=true}});
+assert.equal(run('state.cards.length'),3);assert.equal(prevented,false);
+listeners.keydown({key:'Delete',target:{closest(){return null}},preventDefault(){prevented=true}});
+assert.equal(run('state.cards.length'),1);assert.equal(run('state.cards[0].id'),'c');assert.equal(prevented,true);
+run("$('undo').onclick()");assert.equal(run('state.cards.length'),3);
+run("$('clear').onclick()");assert.equal(run('state.cards.length'),0);
+run("$('undo').onclick()");assert.equal(run('state.cards.length'),3);
+const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+assert.ok(html.includes('<h1>TCG Frame Generator</h1>'));
+const structured=JSON.parse(html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)[1]);
+assert.equal(structured.name,'TCG Frame Generator');
+console.log('PASS: default placement, Delete multi-selection, input safety, clear all, undo, SEO structured data');
