@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
-let state = {fw:300,fh:400,margin:20,gap:10,cols:3,autoFit:true,free:false,snap:true,frame:'slim',color:'#242424',bg:'#f6f1e7',cards:[]};
+const initialState = () => ({fw:300,fh:400,margin:20,gap:10,cols:3,autoFit:true,free:false,snap:true,frame:'slim',color:'#242424',bg:'#f6f1e7',cards:[]});
+let state = initialState();
 let selected = new Set(), history = [], drag = null, inspectorMode = false;
 const esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const chosen = () => state.cards.filter(c=>selected.has(c.id));
@@ -35,7 +36,8 @@ function render(){
   $('canvas').setAttribute('viewBox',`${-f} ${-f} ${state.fw+2*f} ${state.fh+2*f}`);
   $('canvas').innerHTML=state.cards.length?`<rect x="${-f}" y="${-f}" width="${state.fw+2*f}" height="${state.fh+2*f}" fill="${state.color}"/>`+markup():'';
   $('workspace').classList.toggle('free',state.free);$('empty').hidden=!!state.cards.length;
-  $('dimensions').textContent=`${rounded(state.fw/10)} × ${rounded(state.fh/10)} cm`;
+  $('dimensions').textContent=state.cards.length?`${rounded(state.fw/10)} × ${rounded(state.fh/10)} cm`:'No frame yet';
+  $('export').disabled=$('print').disabled=!state.cards.length;
   $('summary').textContent=`${state.cards.length} card${state.cards.length===1?'':'s'}`;
   $('mode').textContent=state.free?'Free placement':'Live grid';$('undo').disabled=!history.length;$('selectAll').disabled=$('clear').disabled=!state.cards.length;
   const cards=chosen();if(inspectorMode!==!!cards.length){$('inspectorPanel').scrollTop=0;inspectorMode=!!cards.length} $('general').hidden=!!cards.length;$('selection').hidden=!cards.length;
@@ -49,12 +51,12 @@ function render(){
   }
   const outside=state.cards.some(c=>c.x<-.001||c.y<-.001||c.x+c.w>state.fw+.001||c.y+c.h>state.fh+.001);
   const overlap=state.cards.some((a,i)=>state.cards.slice(i+1).some(b=>a.x<b.x+b.w-.001&&a.x+a.w>b.x+.001&&a.y<b.y+b.h-.001&&a.y+a.h>b.y+.001));
-  $('warning').textContent=[outside?'Some cards extend beyond the frame. Increase the frame size or enable auto-size.':'',overlap?'Some cards overlap.':''].filter(Boolean).join(' ');
-  try{localStorage.setItem('card-atelier',JSON.stringify(state))}catch{$('warning').textContent+=' Auto-save unavailable. Download your project to keep changes.'}
+  $('warning').textContent=[outside?'Some cards extend beyond the frame. Increase the frame size or enable automatic sizing.':'',overlap?'Some cards overlap.':''].filter(Boolean).join(' ');
+  try{localStorage.setItem('card-atelier',JSON.stringify(state))}catch{$('warning').textContent+=' Automatic saving unavailable. Download your project to keep changes.'}
 }
 $('preset').onchange=()=>{if($('preset').value!=='custom'){const [w,h]=$('preset').value.split(',');$('cw').value=w;$('ch').value=h}};
 for(const id of ['cw','ch'])$(id).oninput=()=>$('preset').value='custom';
-$('add').onclick=()=>{const w=readNumber($('cw'),1),h=readNumber($('ch'),1),n=readNumber($('count'),1,true);if(w===null||h===null||n===null){alert('Enter positive dimensions and a whole-number quantity.');return}act(()=>{const b=bounds(),start=state.cards.length?b.r+state.gap:state.margin;for(let i=0;i<n;i++)state.cards.push({id:crypto.randomUUID(),name:`Card ${state.cards.length+1}`,w,h,x:start+i*(w+state.gap),y:state.margin})})};
+$('add').onclick=()=>{const w=readNumber($('cw'),1),h=readNumber($('ch'),1),n=readNumber($('count'),1,true);if(w===null||h===null||n===null){alert('Enter positive dimensions and a whole number quantity.');return}act(()=>{const b=bounds(),start=state.cards.length?b.r+state.gap:state.margin;for(let i=0;i<n;i++)state.cards.push({id:crypto.randomUUID(),name:`Card ${state.cards.length+1}`,w,h,x:start+i*(w+state.gap),y:state.margin})})};
 for(const k of ['cols','gap','margin','fw','fh'])bindNumber(k,['cols','fw','fh'].includes(k)?1:0,n=>state[k]=n,k==='cols');
 for(const k of ['frame','color','bg'])$(k).oninput=()=>act(()=>state[k]=$(k).value,false);
 for(const k of ['autoFit','free','snap'])$(k).onchange=()=>act(()=>state[k]=$(k).checked);
@@ -67,7 +69,11 @@ $('back').onclick=deselect;$('selectAll').onclick=()=>{selected=new Set(state.ca
 $('selectedList').onclick=e=>{const b=e.target.closest('[data-edit]');if(b){selected=new Set([b.dataset.edit]);render()}};
 function deleteSelected(){if(!selected.size)return;drag=null;act(()=>{state.cards=state.cards.filter(c=>!selected.has(c.id));selected.clear()})}
 $('delete').onclick=deleteSelected;
-$('clear').onclick=()=>{if(!state.cards.length)return;drag=null;act(()=>{state.cards=[];selected.clear()})};
+function clearAll(){
+  drag=null;
+  act(()=>{state=initialState();selected.clear();$('count').value=1},false);
+}
+$('clear').onclick=clearAll;
 $('duplicate').onclick=()=>act(()=>{const copies=chosen().map(c=>({...c,id:crypto.randomUUID(),name:c.name+' copy',x:c.x+5,y:c.y+5}));state.cards.push(...copies);selected=new Set(copies.map(c=>c.id))});
 $('rotate').onclick=()=>act(()=>chosen().forEach(c=>{c.x+=(c.w-c.h)/2;c.y+=(c.h-c.w)/2;[c.w,c.h]=[c.h,c.w]}));
 $('center').onclick=()=>act(center,false);
@@ -107,5 +113,5 @@ function validate(s){
   s.cards=s.cards.map(c=>{if(![c.x,c.y,c.w,c.h].every(Number.isFinite)||c.w<=0||c.h<=0||typeof c.name!=='string')throw Error('Invalid card.');return {id:crypto.randomUUID(),name:c.name,x:c.x,y:c.y,w:c.w,h:c.h}});return s;
 }
 $('load').onchange=async e=>{try{if(!e.target.files.length)return;const s=validate(JSON.parse(await e.target.files[0].text()));act(()=>{state=s;selected.clear()},false)}catch(err){alert(err.message)}finally{e.target.value=''}};
-$('print').onclick=()=>{const win=window.open('','_blank');if(!win){alert('Allow pop-ups to open the print preview.');return}win.document.write(`<!doctype html><html lang="en"><title>Card template — print at 100%</title><style>@page{size:${state.fw}mm ${state.fh}mm;margin:0}body{margin:0}svg{display:block}@media print{button,p{display:none}}</style><button onclick="window.print()">Print / save as PDF</button><p>Print at actual size / 100%. Paper size: ${rounded(state.fw)} × ${rounded(state.fh)} mm. For tiled A4 output, open the SVG in a suitable printing application.</p>${svg()}</html>`);win.document.close()};
+$('print').onclick=()=>{const win=window.open('','_blank');if(!win){alert('Allow popup windows to open the print preview.');return}win.document.write(`<!doctype html><html lang="en"><title>Card template: print at 100%</title><style>@page{size:${state.fw}mm ${state.fh}mm;margin:0}body{margin:0}svg{display:block}@media print{button,p{display:none}}</style><button onclick="window.print()">Print / save as PDF</button><p>Print at actual size / 100%. Paper size: ${rounded(state.fw)} × ${rounded(state.fh)} mm. For tiled A4 output, open the SVG in a suitable printing application.</p>${svg()}</html>`);win.document.close()};
 try{const saved=localStorage.getItem('card-atelier');if(saved)state=validate(JSON.parse(saved))}catch{}render();
