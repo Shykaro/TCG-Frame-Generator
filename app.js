@@ -113,5 +113,28 @@ function validate(s){
   s.cards=s.cards.map(c=>{if(![c.x,c.y,c.w,c.h].every(Number.isFinite)||c.w<=0||c.h<=0||typeof c.name!=='string')throw Error('Invalid card.');return {id:crypto.randomUUID(),name:c.name,x:c.x,y:c.y,w:c.w,h:c.h}});return s;
 }
 $('load').onchange=async e=>{try{if(!e.target.files.length)return;const s=validate(JSON.parse(await e.target.files[0].text()));act(()=>{state=s;selected.clear()},false)}catch(err){alert(err.message)}finally{e.target.value=''}};
-$('print').onclick=()=>{const win=window.open('','_blank');if(!win){alert('Allow popup windows to open the print preview.');return}win.document.write(`<!doctype html><html lang="en"><title>Card template: print at 100%</title><style>@page{size:${state.fw}mm ${state.fh}mm;margin:0}body{margin:0}svg{display:block}@media print{button,p{display:none}}</style><button onclick="window.print()">Print / save as PDF</button><p>Print at actual size / 100%. Paper size: ${rounded(state.fw)} × ${rounded(state.fh)} mm. For tiled A4 output, open the SVG in a suitable printing application.</p>${svg()}</html>`);win.document.close()};
+// Each SVG unit is exactly one millimetre on a physical A4 page.
+function printDocument(){
+  const tileWidth=180,tileHeight=250;
+  const columns=Math.max(1,Math.ceil(state.fw/tileWidth));
+  const rows=Math.max(1,Math.ceil(state.fh/tileHeight));
+  const pages=[];
+  const content=markup(true);
+  for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){
+    const x=col*tileWidth,y=row*tileHeight;
+    const width=Math.min(tileWidth,state.fw-x),height=Math.min(tileHeight,state.fh-y);
+    pages.push(`<section class="sheet"><header><span>Row ${row+1} / ${rows} · Column ${col+1} / ${columns}</span><svg width="54mm" height="8mm" viewBox="0 0 54 8" aria-label="50 mm scale check"><path d="M2 6H52 M2 4V8 M52 4V8" fill="none" stroke="black" stroke-width=".2"/><text x="27" y="3" text-anchor="middle" font-family="sans-serif" font-size="2.5">50 mm scale check</text></svg></header><svg class="tile" xmlns="${NS}" width="180mm" height="250mm" viewBox="${x} ${y} 180 250"><defs><clipPath id="frame-${row}-${col}"><rect width="${state.fw}" height="${state.fh}"/></clipPath></defs><g clip-path="url(#frame-${row}-${col})">${content}</g><rect x="${x+.1}" y="${y+.1}" width="${Math.max(0,width-.2)}" height="${Math.max(0,height-.2)}" fill="none" stroke="#555" stroke-width=".2" stroke-dasharray="2 1"/><path d="M${x} ${y+3}V${y}H${x+3} M${x+width-3} ${y}H${x+width}V${y+3} M${x} ${y+height-3}V${y+height}H${x+3} M${x+width-3} ${y+height}H${x+width}V${y+height-3}" fill="none" stroke="black" stroke-width=".3"/></svg><footer>Page ${pages.length+1} / ${columns*rows} · Origin ${rounded(x)}, ${rounded(y)} mm · Frame ${rounded(state.fw)} × ${rounded(state.fh)} mm</footer></section>`);
+  }
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>TCG Frame Generator: A4 template at actual size</title><style>
+  *{box-sizing:border-box}body{margin:0;background:#e8ece7;color:#182b20;font:14px system-ui,sans-serif}.instructions{max-width:800px;margin:24px auto;padding:24px;background:white;border-radius:8px;line-height:1.6}button{padding:12px 18px;cursor:pointer}h1{font-size:24px}.sheet{width:180mm;height:267mm;margin:20px auto;background:white;overflow:hidden;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto;page-break-after:auto}header{height:10mm;display:flex;align-items:center;justify-content:space-between;font-size:9px}footer{height:7mm;display:flex;align-items:center;font-size:8px}.tile{display:block;width:180mm;height:250mm;overflow:hidden}
+  @page{size:A4 portrait;margin:15mm}@media print{html,body{width:180mm;margin:0;background:white}.instructions{display:none}.sheet{margin:0;box-shadow:none}svg{max-width:none!important}}
+  </style></head><body><div class="instructions"><h1>Print your template at actual size</h1><p>${columns*rows} A4 pages · ${columns} columns × ${rows} rows · Frame ${rounded(state.fw)} × ${rounded(state.fh)} mm</p><ol><li>Choose A4 paper, portrait orientation and <strong>100% / Actual size</strong>. Turn off Fit to page, browser headers and footers, and any printer scaling. Keep the document margins.</li><li>Print one page first. The control line must measure exactly <strong>50 mm</strong>. If it does not, correct the print scale before printing the remaining pages.</li><li>Trim each tile at its outer dashed rectangle and corner marks. Join the edges without overlap, following the row and column numbers. Dashed card outlines inside each tile mark the card positions.</li></ol><p>You can also choose Save as PDF to keep these A4 pages, then print the PDF at Actual size. Browser and printer settings cannot be forced by this page.</p><button onclick="window.print()">Print A4 pages / save as PDF</button></div>${pages.join('')}</body></html>`;
+}
+$('print').onclick=()=>{
+  if(!state.cards.length)return;
+  const win=window.open('','_blank');
+  if(!win){alert('Allow popup windows to open the print preview.');return}
+  win.document.write(printDocument());win.document.close();
+};
+
 try{const saved=localStorage.getItem('card-atelier');if(saved)state=validate(JSON.parse(saved))}catch{}render();

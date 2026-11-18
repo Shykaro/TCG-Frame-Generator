@@ -9,6 +9,6 @@ TCG Frame Generator helps you arrange existing trading cards, find the required 
 5. Clear all resets the display to an empty project. Add cards to start again. Undo restores the previous project.
 6. Save your project or download the SVG template. Print at 100% and check the measurements before cutting.
 
-Frame sizes are inner dimensions. Slab sizes are approximate. Measure your holders before ordering a frame. PDF printing uses the full layout size; tiled printing requires another application.
+Frame sizes are inner dimensions. Slab sizes are approximate. Measure your holders before ordering a frame. Print A4 / PDF splits the template into A4 tiles at original size. Choose A4 portrait, 100% or Actual size, and disable Fit to page. Verify the 50 mm control line, then trim and join tiles at the outer marks without overlap.
 
 Open index.html locally, or publish the repository root with GitHub Pages.
